@@ -80,12 +80,22 @@ def icd11_buscar_sintomas_y_signos(query: TermQuery) -> dict:
     resultados = [{"manifestacion": e.get("title"), "uri": e.get("id"), "capitulo": e.get("chapter"), "coincidencia": e.get("score")} for e in data.get('destinationEntities', [])]
     return {"resultados_sintomatologia": resultados}
 
+
+def obtener_url_publica(api_uri: str) -> str:
+    """
+    Convierte una URI de API (http://id.who.int/...) en una URL navegable pública.
+    """
+    # Extraer el ID único (la última parte de la URI)
+    entity_id = api_uri.split('/')[-1]
+    # Retornar el formato del browser oficial
+    return f"https://icd.who.int/browse/2026-01/mms/es#{entity_id}"
+
 @mcp.tool()
 def icd11_buscar_codigo_mms(query: TermQuery) -> dict:
     """
     Propósito: Consultar la linearización oficial MMS (Mortality and Morbidity Statistics) para extraer el código estadístico oficial y la URI de liberación.
     Input: termino (str) - Patología o diagnóstico formal a codificar.
-    Output: resultados_mms (list of dict) con codigo_oficial, titulo, uri_linearizacion y capitulo.
+    Output: resultados_mms (list of dict) con codigo_oficial, titulo, uri_api, capitulo y uri_navegable.
     """
     url = "https://id.who.int/icd/release/11/2024-01/mms/search"
     response = requests.get(url, headers=_get_api_headers(), params={'q': query.termino}, verify=False)
@@ -94,7 +104,11 @@ def icd11_buscar_codigo_mms(query: TermQuery) -> dict:
         response = requests.get(url_alt, headers=_get_api_headers(), params={'q': query.termino}, verify=False)
     response.raise_for_status()
     data = response.json()
-    resultados = [{"codigo_oficial": e.get("theCode"), "titulo": e.get("title"), "uri_linearizacion": e.get("id"), "capitulo": e.get("chapter")} for e in data.get('destinationEntities', [])]
+    resultados = [{"codigo_oficial": e.get("theCode"),
+                   "titulo": e.get("title"),
+                   "uri_api": e.get("id"),
+                   "capitulo": e.get("chapter"),
+                   "uri_navegable":obtener_url_publica(e.get("id"))} for e in data.get('destinationEntities', [])]
     return {"resultados_mms": resultados}
 
 class URIQuery(BaseModel):
@@ -104,7 +118,7 @@ class URIQuery(BaseModel):
 def icd11_obtener_criterios_clinicos(query: URIQuery) -> dict:
     """
     Propósito: Extraer metadatos profundos, definiciones formales, inclusiones y exclusiones para análisis diferencial.
-    Input: uri_entidad (str) - URI completa de la entidad obtenida en búsquedas previas.
+    Input: uri_entidad (str) - URI completa de la entidad obtenida en búsquedas previas. Debe ser la URI de API, no la de navegación.
     Output: dict con uri, titulo, definicion, inclusiones y exclusiones.
     """
     target_url = query.uri_entidad.strip().replace("http://", "https://")

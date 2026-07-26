@@ -33,7 +33,7 @@ if prompt:
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        with st.spinner("Ejecutando mapeo taxonómico..."):
+        with st.spinner("Ejecutando consulta a CIE-11..."):
             try:
                 result = run_clinical_agent(prompt, st.session_state.session_id)
                 st.markdown(result["answer"])
