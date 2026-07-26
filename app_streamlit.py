@@ -6,6 +6,45 @@ import uuid
 from agent_core import run_clinical_agent
 
 st.set_page_config(page_title="Asistente Diagnóstico CIE-11", layout="wide")
+
+# Paleta verde-azulada (salud), en lugar de los rojos/naranjas por defecto de Streamlit.
+st.markdown("""
+<style>
+:root {
+    --primary-color: #0F9B8E;
+}
+.stButton>button, button[kind="primary"] {
+    background-color: #0F9B8E;
+    border-color: #0F9B8E;
+    color: white;
+}
+.stButton>button:hover, button[kind="primary"]:hover {
+    background-color: #0C7D73;
+    border-color: #0C7D73;
+}
+div.stSpinner > div > div {
+    border-top-color: #0F9B8E !important;
+}
+[data-testid="stChatInput"] > div:focus-within {
+    border-color: #0F9B8E !important;
+    box-shadow: 0 0 0 1px #0F9B8E !important;
+    outline-color: #0F9B8E !important;
+}
+[data-testid="stChatMessageAvatarUser"] {
+    background-color: #2E86AB !important;
+}
+[data-testid="stChatMessageAvatarAssistant"] {
+    background-color: #0F9B8E !important;
+}
+[data-testid="stChatInputSubmitButton"]:not(:disabled) {
+    background-color: #0F9B8E !important;
+}
+[data-testid="stChatInputSubmitButton"]:not(:disabled):hover {
+    background-color: #0C7D73 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 st.title("🩺 Soporte para Evaluación Clínica CIE-11")
 
 if "session_id" not in st.session_state:

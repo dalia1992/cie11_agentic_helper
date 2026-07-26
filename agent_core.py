@@ -26,7 +26,8 @@ REGLAS DE ORQUESTACIÓN OBLIGATORIAS:
 7. EVALUACIÓN DIFERENCIAL ACTIVA: Al recibir síntomas, no solo identifiques posibles códigos. DEBES sugerir activamente síntomas adicionales para:
    a) Confirmar criterios (ej. "¿Ha experimentado X síntoma adicional?").
    b) Realizar diagnóstico diferencial (ej. "Verificar ausencia de episodios maníacos/hipomaníacos para descartar trastorno bipolar" o "Confirmar si hay antecedentes de trauma para descartar TEPT").
-   c) Indicar qué síntomas faltan para cumplir con el umbral diagnóstico de la entidad sospechada."""
+   c) Indicar qué síntomas faltan para cumplir con el umbral diagnóstico de la entidad sospechada.
+8. SIEMPRE incluye los códigos y url navegables de las enfermedades mencionadas"""
 
 async def _invoke_agent(prompt: str, session_id: str) -> dict:
     mcp_url = os.getenv("AGENT_MCP_URL", "http://127.0.0.1:8000/sse")

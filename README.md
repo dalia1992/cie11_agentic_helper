@@ -1,39 +1,35 @@
-# 🩺 Sistema de Agentes Clínicos CIE-11 (LangChain + FastMCP)
+# 🩺 Sistema de Agentes Clínicos CIE-11
 
-## 📌 Descripción del Proyecto
+## 📌 Problema
+Asistencia en la evaluación clínica y elaboración de informes psicológicos. El sistema resuelve la dificultad de navegar la taxonomía oficial de la OMS (CIE-11) manualmente, permitiendo diagnósticos diferenciales precisos y trazables para profesionales de la psicología.
 
-Este repositorio contiene un sistema de inteligencia artificial basado en agentes diseñado para asistir en la evaluación clínica, diagnósticos diferenciales y la elaboración de informes psicológicos detallados. Utiliza el **Model Context Protocol (MCP)** para integrar dinámicamente un agente de lenguaje (LLM) con la API oficial de la Clasificación Internacional de Enfermedades (CIE-11) de la OMS.
+## 🏗️ Arquitectura
+El sistema emplea un patrón de arquitectura distribuida para garantizar el desacoplamiento entre la interfaz de usuario, la lógica de razonamiento y el acceso a datos taxonómicos:
 
-El sistema garantiza rigor analítico al separar las capacidades de razonamiento conversacional de las fuentes de verdad taxonómica.
+1. **Frontend (Streamlit):** Actúa como el cliente principal que mantiene el estado de la sesión (`session_id`) y renderiza la interfaz conversacional.
+2. **Orquestador (LangGraph):** Implementado en `agent_core.py`, maneja el flujo de razonamiento y la memoria persistente por sesión. Se comunica con el servidor MCP mediante el protocolo **SSE (Server-Sent Events)** para una comunicación asíncrona y robusta sobre HTTP.
+3. **Servidor MCP (mcp_server.py):** Expone las herramientas clínicas como un servidor HTTP independiente, facilitando el despliegue escalable en servicios en la nube (Azure/Render) y garantizando que el acceso a la API de la OMS sea centralizado.
 
-## 🏗️ Arquitectura del Sistema
+### Diagrama de Flujo
+```text
+[Streamlit App] --(HTTPS/SSE)--> [Agente LangGraph] --(Tools)--> [MCP Server] --(API)--> [OMS CIE-11]
+``` 
 
-El proyecto sigue un patrón de diseño modular que separa la interfaz, el orquestador y los datos:
+## 🛠️ Matriz de Tools MCP
+| Tool | Propósito | Entrada | Salida | Riesgo |
+|---|---|---|---|---|
+| `icd11_buscar_fundacion` | Búsqueda taxonómica general | Término (str) | Lista de URI/Títulos | Bajo |
+| `icd11_buscar_sintomas` | Mapeo clínico de síntomas | Síntoma (str) | Manifestaciones/URI | Bajo |
+| `icd11_buscar_codigo_mms` | Extracción de código MMS | Trastorno (str) | Código, Título, URL | Bajo |
+| `icd11_obtener_criterios` | Análisis diferencial profundo | URI (str) | Definición, Inclusiones | Bajo |
 
-- **Interfaz de Usuario (app_streamlit.py):** Frontend ligero que maneja el estado de la sesión visual (session_id) y renderiza la trazabilidad de la evidencia.
-- **Núcleo del Agente (agent_core.py):** Orquestador implementado con langgraph.prebuilt.create_react_agent. Maneja la memoria a corto plazo mediante InMemorySaver (vinculada al hilo de la sesión) y abstrae el bucle de razonamiento.
-- **Servidor MCP de Dominio (mcp_server.py):** Servidor FastMCP autónomo que expone herramientas estandarizadas para consultar la API v2 de la OMS, eliminando dependencias de bases de datos locales.
+## 🧠 Memoria
+El sistema utiliza `InMemorySaver` de `langgraph` con un `session_id` único por usuario/conversación. La memoria permite referencias contextuales (ej. "dame sus criterios" tras buscar una entidad). 
+*Limitación: Al ser en memoria, los datos se reinician al recargar el proceso.*
 
-## 🛠️ Matriz de Herramientas (Tools)
+## Variables de Entorno
 
-El servidor MCP expone las siguientes herramientas clínicas con contratos validados:
-
-| **Herramienta**         | **Propósito**                                       | **Entrada**       | **Salida**               |
-| ----------------------- | --------------------------------------------------- | ----------------- | ------------------------ |
-| icd11_buscar_fundacion  | Búsqueda taxonómica general en la OMS.              | termino (str)     | Lista de URI y títulos.  |
-| ---                     | ---                                                 | ---               | ---                      |
-| icd11_buscar_sintomas   | Mapeo de manifestaciones inespecíficas.             | termino (str)     | Manifestaciones y URI.   |
-| ---                     | ---                                                 | ---               | ---                      |
-| icd11_buscar_codigo_mms | Extracción de códigos estadísticos de morbilidad.   | termino (str)     | Código MMS oficial, URI. |
-| ---                     | ---                                                 | ---               | ---                      |
-| icd11_obtener_criterios | Extracción de inclusiones/exclusiones diagnósticas. | uri_entidad (str) | Definición y criterios.  |
-| ---                     | ---                                                 | ---               | ---                      |
-
-## 🚀 Requisitos Previos y Configuración
-
-### 1\. Variables de Entorno
-
-Clona el repositorio e inicializa el archivo de configuración a partir de la plantilla.
+Inicializa el archivo de configuración a partir de la plantilla.
 
 cp .env.example .env
 
@@ -45,36 +41,19 @@ ICD_CLIENT_ID=tu_client_id_de_la_oms
 ICD_CLIENT_SECRET=tu_client_secret_de_la_oms  
 MCP_SERVER_URL=<http://127.0.0.1:8000/mcp>
 
-### 2\. Instalación de Dependencias
+## 🚀 Instalación Local
+1. `python -m venv .venv`
+2. `source .venv/bin/activate` (o `.venv\Scripts\activate`)
+3. `pip install -r requirements.txt`
+4. Crear `.env` basado en `.env.example` con tus credenciales.
+5. Ejecutar servidor MCP: `python mcp_server.py`
+6. Ejecutar UI: `streamlit run app_streamlit.py`
 
-Se recomienda utilizar un entorno virtual (venv o conda). Ejecuta:
+## 🧪 Pruebas
+1. **Consulta directa:** "Dime el código MMS de la distimia".
+2. **Referencia:** "¿Cuáles son sus criterios de exclusión?" (usa la memoria).
+3. **Análisis diferencial:** "Diferencia TEPT de trastorno de adaptación con síntomas de ansiedad".
 
-pip install -r requirements.txt
-
-_(Asegúrate de que dependencias como langchain, langgraph, streamlit y mcp estén actualizadas según el archivo)._
-
-## 💻 Ejecución Local
-
-Para garantizar la correcta comunicación entre los componentes, el sistema requiere levantar dos procesos independientes.
-
-**Paso 1: Iniciar el Servidor MCP (Backend de Datos)**
-
-Abre una terminal y ejecuta el servidor que expone las herramientas de la OMS:
-
-python mcp_server.py
-
-_(El servidor se ejecutará por defecto en <http://127.0.0.1:8000>)_
-
-**Paso 2: Iniciar la Interfaz Streamlit (Frontend y Agente)**
-
-Abre una segunda terminal, asegurándote de estar en el mismo entorno virtual, y ejecuta:
-
-streamlit run app_streamlit.py
-
-## 🧪 Casos de Prueba (Validación Funcional)
-
-Para verificar la correcta integración y trazabilidad de las herramientas, ingresa los siguientes prompts en la interfaz:
-
-- **Mapeo Sintomatológico:** _"Tengo un caso con estado de ánimo deprimido y anhedonia persistente. Busca estos síntomas y sugiere entidades taxonómicas relacionadas."_
-- **Extracción de Códigos MMS:** _"Necesito el código estadístico oficial (MMS) para el Trastorno de Ansiedad Generalizada."_
-- **Análisis Diferencial Profundo:** _"Obtén los criterios clínicos, inclusiones y exclusiones del Trastorno de Estrés Postraumático y compáralo taxonómicamente con el Trastorno de Adaptación."_
+## 🔗 Enlaces
+- **App:** [Enlace de Streamlit Community Cloud]
+- **Repo:** [Tu URL de GitHub]
