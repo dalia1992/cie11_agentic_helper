@@ -8,6 +8,9 @@ import urllib3
 from pydantic import BaseModel, Field
 from mcp.server.fastmcp import FastMCP
 
+from dotenv import load_dotenv
+load_dotenv()
+
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 mcp = FastMCP("GestorDiagnosticoClinicoCIE11")
