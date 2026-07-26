@@ -1,162 +1,52 @@
 """
-Núcleo reutilizable del agente.
-
-Este módulo contiene el avance de Clase 3:
-- agente LangChain;
-- tools descubiertas desde mcp_datos.py;
-- memoria de corto plazo por conversación;
-- ventana de mensajes para limitar el contexto;
-- trazabilidad de llamadas a tools.
-
-No contiene Streamlit ni configuración de Claude Desktop. Eso permite reutilizar
-la misma lógica desde diferentes clientes.
+Orquestador LangChain, Memoria y Extracción de Traza.
 """
-from __future__ import annotations
 import os
-from collections.abc import Iterable
-from dotenv import load_dotenv
-from langchain.agents import create_agent, AgentState
-from langchain.agents.middleware import before_model
-from langchain.messages import AIMessage, ToolMessage, RemoveMessage
+import asyncio
 from langchain_openai import ChatOpenAI
+from langgraph.prebuilt import create_react_agent
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.graph.message import REMOVE_ALL_MESSAGES
-from langgraph.runtime import Runtime
 
-load_dotenv()
+memory = InMemorySaver()
 
-MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-5.4-nano")
-DATA_MCP_URL = os.getenv("DATA_MCP_URL", "http://127.0.0.1:8000/mcp")
-WINDOW_MESSAGES = int(os.getenv("MEMORY_WINDOW_MESSAGES", "8"))
+SYSTEM_PROMPT = """Eres un Especialista en Diagnóstico Clínico.
+Tu objetivo es estructurar análisis comparativos y apoyar en la elaboración de informes psicológicos detallados utilizando la CIE-11.
 
-SYSTEM_PROMPT = """
-Eres un analista de e-commerce y respondes en español claro.
-
-REGLAS:
-1. Para toda afirmación factual sobre clientes, consumo, productos, experiencia o ventas,
-   usa las tools MCP antes de responder.
-2. Nunca inventes cifras, clientes, fechas ni resultados.
-3. Si el usuario se refiere a "ese cliente", "él" o "la empresa anterior", revisa
-   la conversación reciente: esa es la razón de usar memoria de corto plazo.
-4. Si no tienes un Customer_ID inequívoco, usa buscar_clientes y explica cualquier ambigüedad.
-5. Las tools son de solo lectura: nunca digas que modificaste la base.
-6. Estructura las respuestas de análisis con Hallazgos, Evidencia y Recomendación.
-7. Sé transparente: cuando los datos sean insuficientes, indícalo.
+REGLAS DE ORQUESTACIÓN OBLIGATORIAS:
+1. Usa las tools para obtener datos taxonómicos precisos.
+2. Ante dudas en diagnósticos de casos, extrae definiciones, inclusiones y exclusiones de múltiples entidades para contrastar.
+3. Mantén un rigor analítico alto, separando observaciones de entrevistas clínicas de las clasificaciones formales de la OMS.
+4. Indica siempre qué evidencia y códigos MMS sustentan tu conclusión.
 """
 
-# Persistencia EN MEMORIA DEL PROCESO: sirve para una clase y un prototipo local.
-# Al reiniciar el proceso, las conversaciones se pierden.
-CHECKPOINTER = InMemorySaver()
+async def _invoke_agent(prompt: str, session_id: str) -> dict:
+    mcp_url = os.getenv("MCP_SERVER_URL", "http://127.0.0.1:8000/mcp")
+    servers_config = {"clinica_mcp": {"transport": "http", "url": mcp_url}}
+    mcp_client = MultiServerMCPClient(servers_config)
+    tools = await mcp_client.get_tools()
+    
+    llm = ChatOpenAI(model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"), temperature=0)
+    agent = create_react_agent(model=llm, tools=tools, state_modifier=SYSTEM_PROMPT, checkpointer=memory)
+    
+    config = {"configurable": {"thread_id": session_id}}
+    result = await agent.ainvoke({"messages": [("user", prompt)]}, config=config)
+    return result
 
-@before_model
-def ventana_contexto(state: AgentState, runtime: Runtime):
-    """
-    Equivalente moderno a una 'ConversationBufferWindowMemory':
-    conserva el primer mensaje del estado y los últimos N mensajes.
-    Se ejecuta antes de cada llamada al LLM para controlar el contexto enviado.
-    """
-    messages = state["messages"]
-    if len(messages) <= WINDOW_MESSAGES:
-        return None
-
-    first_message = messages[0]
-    recent_messages = messages[-WINDOW_MESSAGES:]
-    # Evita partir una secuencia de tool calls de forma obvia.
-    if isinstance(recent_messages[0], ToolMessage) and len(messages) > WINDOW_MESSAGES + 1:
-        recent_messages = messages[-(WINDOW_MESSAGES + 1):]
-
-    return {
-        "messages": [
-            RemoveMessage(id=REMOVE_ALL_MESSAGES),
-            first_message,
-            *recent_messages,
-        ]
-    }
-
-async def construir_agente():
-    """Descubre las tools remotas del MCP de datos y arma el agente LangChain."""
-    client = MultiServerMCPClient(
-        {"ecommerce": {"transport": "http", "url": DATA_MCP_URL}}
-    )
-    tools = await client.get_tools()
-
-    llm = ChatOpenAI(
-        model=MODEL_NAME,
-        temperature=0,
-    )
-
-    agent = create_agent(
-        model=llm,
-        tools=tools,
-        system_prompt=SYSTEM_PROMPT,
-        checkpointer=CHECKPOINTER,
-        middleware=[ventana_contexto],
-    )
-    return agent
-
-def _texto_final(messages: list) -> str:
-    for message in reversed(messages):
-        if isinstance(message, AIMessage) and not message.tool_calls:
-            return str(message.content)
-    return "El agente no generó una respuesta final."
-
-def _traza(messages: Iterable) -> list[dict]:
-    trace: list[dict] = []
-    for message in messages:
-        if isinstance(message, AIMessage) and message.tool_calls:
-            for call in message.tool_calls:
-                trace.append({
-                    "tipo": "tool_call",
-                    "tool": call.get("name"),
-                    "argumentos": call.get("args", {}),
-                })
-        if isinstance(message, ToolMessage):
-            content = str(message.content)
-            trace.append({
-                "tipo": "tool_result",
-                "tool_call_id": message.tool_call_id,
-                "resultado_previo": content[:500] + ("..." if len(content) > 500 else ""),
-            })
-    return trace
-
-async def resolver_consulta(
-    mensaje: str,
-    session_id: str,
-    canal: str = "web",
-) -> dict:
-    """
-    Ejecuta una interacción completa. thread_id vincula los turnos de una conversación.
-    session_id debe ser estable dentro de una misma conversación.
-    """
-    if not os.getenv("OPENAI_API_KEY"):
-        raise RuntimeError("Falta OPENAI_API_KEY. Cópiala en un archivo .env.")
-
-    agent = await construir_agente()
-    result = await agent.ainvoke(
-        {"messages": [{"role": "user", "content": mensaje}]},
-        {"configurable": {"thread_id": session_id, "canal": canal}},
-    )
-
-    messages = result["messages"]
-    user_visible = [
-        {"rol": "usuario" if getattr(m, "type", "") == "human" else "asistente",
-         "contenido": str(m.content)[:600]}
-        for m in messages
-        if getattr(m, "type", "") in {"human", "ai"} and not getattr(m, "tool_calls", None)
-    ]
-
-    return {
-        "respuesta": _texto_final(messages),
-        "session_id": session_id,
-        "canal": canal,
-        "modelo": MODEL_NAME,
-        "memoria": {
-            "tipo": "corto_plazo_en_memoria",
-            "window_messages": WINDOW_MESSAGES,
-            "mensajes_estado": len(messages),
-            "nota": "La conversación persiste solo mientras el proceso esté activo.",
-        },
-        "traza": _traza(messages),
-        "historial_visible": user_visible[-WINDOW_MESSAGES:],
-    }
+def run_clinical_agent(prompt: str, session_id: str) -> dict:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    raw_result = loop.run_until_complete(_invoke_agent(prompt, session_id))
+    
+    messages = raw_result.get("messages", [])
+    answer = messages[-1].content if messages else "Error en la generación."
+    
+    trace = []
+    for m in messages:
+        if m.type == "tool":
+            trace.append({"tool_name": m.name, "result": m.content})
+        elif m.type == "ai" and hasattr(m, 'tool_calls') and m.tool_calls:
+            for tc in m.tool_calls:
+                trace.append({"action": tc.get('name'), "args": tc.get('args')})
+                
+    return {"answer": answer, "trace": trace}
