@@ -3,10 +3,13 @@ Orquestador LangChain, Memoria y Extracción de Traza.
 """
 import os
 import asyncio
+from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.checkpoint.memory import InMemorySaver
+
+load_dotenv()
 
 memory = InMemorySaver()
 
@@ -21,13 +24,27 @@ REGLAS DE ORQUESTACIÓN OBLIGATORIAS:
 """
 
 async def _invoke_agent(prompt: str, session_id: str) -> dict:
-    mcp_url = os.getenv("MCP_SERVER_URL", "http://127.0.0.1:8000/mcp")
-    servers_config = {"clinica_mcp": {"transport": "http", "url": mcp_url}}
+    mcp_url = os.getenv("AGENT_MCP_URL", "http://127.0.0.1:8000/sse")
+    servers_config = {"clinica_mcp": {"transport": "sse", "url": mcp_url}}
     mcp_client = MultiServerMCPClient(servers_config)
     tools = await mcp_client.get_tools()
     
-    llm = ChatOpenAI(model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"), temperature=0)
-    agent = create_react_agent(model=llm, tools=tools, state_modifier=SYSTEM_PROMPT, checkpointer=memory)
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise ValueError("No se encontró OPENAI_API_KEY en el entorno. Revisa el archivo .env")
+        
+    llm = ChatOpenAI(
+        api_key=api_key, 
+        model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"), 
+        temperature=0
+    )
+    
+    agent = create_react_agent(
+        model=llm, 
+        tools=tools,
+        prompt=SYSTEM_PROMPT,
+        checkpointer=memory
+    )
     
     config = {"configurable": {"thread_id": session_id}}
     result = await agent.ainvoke({"messages": [("user", prompt)]}, config=config)

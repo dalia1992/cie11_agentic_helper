@@ -117,5 +117,7 @@ def icd11_obtener_criterios_clinicos(query: URIQuery) -> dict:
     }
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(mcp.app, host="127.0.0.1", port=8000)
+    # fastmcp detecta el host y el puerto internamente para el transporte SSE (Server-Sent Events) HTTP.
+    # Por defecto, en modo HTTP, inicializa en el puerto que le indiques o el default que maneja la librería.
+    print("Iniciando Servidor FastMCP Clínico CIE-11 en modo HTTP (SSE)...")
+    mcp.run(transport="sse")
