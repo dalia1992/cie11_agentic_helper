@@ -63,7 +63,7 @@ class TermQuery(BaseModel):
 def icd11_buscar_fundacion(query: TermQuery) -> dict:
     """
     Propósito: Consultar el componente multidimensional de Fundación de la OMS para localizar conceptos taxonómicos generales.
-    Input: termino (str) - Término clínico o patología a buscar.
+    Input: query.termino (str) - Término clínico o patología a buscar.
     Output: resultados_fundacion (list of dict) con título, uri, capítulo y score.
     """
     url = "https://id.who.int/icd/entity/search"
@@ -76,8 +76,8 @@ def icd11_buscar_fundacion(query: TermQuery) -> dict:
 @mcp.tool()
 def icd11_buscar_sintomas_y_signos(query: TermQuery) -> dict:
     """
-    Propósito: Explorar manifestaciones clínicas inespecíficas, signos o síntomas aislados (ej. fatiga, irritabilidad) para diagnósticos diferenciales iniciales.
-    Input: termino (str) - Manifestación clínica o síntoma específico a consultar.
+    Propósito: Buscar en el mismo componente de Fundación de la OMS que icd11_buscar_fundacion, pero habilitando coincidencia por palabras clave (includeKeywordResult) para mejorar el recall en manifestaciones clínicas inespecíficas, signos o síntomas aislados (ej. fatiga, irritabilidad). No filtra el resultado a solo síntomas: puede devolver también enfermedades si el término coincide.
+    Input: query.termino (str) - Manifestación clínica o síntoma específico a consultar.
     Output: resultados_sintomatologia (list of dict) con manifestacion, uri, capitulo y coincidencia.
     """
     url = "https://id.who.int/icd/entity/search"
@@ -102,7 +102,7 @@ def obtener_url_publica(api_uri: str) -> str:
 def icd11_buscar_codigo_mms(query: TermQuery) -> dict:
     """
     Propósito: Consultar la linearización oficial MMS (Mortality and Morbidity Statistics) para extraer el código estadístico oficial y la URI de liberación.
-    Input: termino (str) - Patología o diagnóstico formal a codificar.
+    Input: query.termino (str) - Patología o diagnóstico formal a codificar.
     Output: resultados_mms (list of dict) con codigo_oficial, titulo, uri_api, capitulo y uri_navegable.
     """
     url = "https://id.who.int/icd/release/11/2024-01/mms/search"
@@ -126,7 +126,7 @@ class URIQuery(BaseModel):
 def icd11_obtener_criterios_clinicos(query: URIQuery) -> dict:
     """
     Propósito: Extraer metadatos profundos, definiciones formales, inclusiones y exclusiones para análisis diferencial.
-    Input: uri_entidad (str) - URI completa de la entidad obtenida en búsquedas previas. Debe ser la URI de API, no la de navegación.
+    Input: query.uri_entidad (str) - URI completa de la entidad obtenida en búsquedas previas. Debe ser la URI de API, no la de navegación.
     Output: dict con uri, titulo, definicion, inclusiones y exclusiones.
     """
     target_url = query.uri_entidad.strip().replace("http://", "https://")
