@@ -81,7 +81,7 @@ def _simplificar_resultado(contenido) -> object:
         try:
             data = json.loads(contenido)
         except (json.JSONDecodeError, TypeError):
-            return contenido[:300]
+            return {"error": contenido[:300]}
 
     if isinstance(data, dict) and len(data) == 1:
         lista = next(iter(data.values()))

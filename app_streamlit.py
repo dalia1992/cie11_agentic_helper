@@ -80,10 +80,12 @@ if prompt:
                 tipo = evento.get("tipo")
                 if tipo == "inicio":
                     estado.update(label=f"🔧 Consultando `{evento['herramienta']}`...")
+                    estado.write(f"🔧 **Herramienta:** `{evento['herramienta']}`")
                     estado.write(f"**Input:** {evento['input']}")
                 elif tipo == "fin":
-                    estado.write(f"✅ Resultado de `{evento['herramienta']}`:")
+                    estado.write(f"**Resultado de** `{evento['herramienta']}`:")
                     estado.json(evento["resultado"], expanded=False)
+                    estado.divider()
                 elif tipo == "error":
                     raise RuntimeError(evento["mensaje"])
                 elif tipo == "final":
