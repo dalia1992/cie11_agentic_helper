@@ -3,7 +3,7 @@ Interfaz Streamlit: UI, Gestión de Sesión y Evidencia.
 """
 import streamlit as st
 import uuid
-from agent_core import run_clinical_agent
+from agent_core import stream_clinical_agent
 
 st.set_page_config(page_title="Asistente Diagnóstico CIE-11", layout="wide")
 
@@ -72,17 +72,39 @@ if prompt:
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        with st.spinner("Ejecutando consulta a CIE-11..."):
-            try:
-                result = run_clinical_agent(prompt, st.session_state.session_id)
-                st.markdown(result["answer"])
-                
-                with st.expander("Trazabilidad y Criterios Consultados"):
-                    if result["trace"]:
-                        st.json(result["trace"])
-                    else:
-                        st.info("No se ejecutaron herramientas en este turno.")
-                
-                st.session_state.messages.append({"role": "assistant", "content": result["answer"]})
-            except Exception as e:
-                st.error(f"Error de sistema: {str(e)}")
+        estado = st.status("Analizando consulta clínica...", expanded=True)
+        answer = None
+        trace = []
+        try:
+            for evento in stream_clinical_agent(prompt, st.session_state.session_id):
+                tipo = evento.get("tipo")
+                if tipo == "inicio":
+                    estado.update(label=f"🔧 Consultando `{evento['herramienta']}`...")
+                    estado.write(f"**Input:** {evento['input']}")
+                elif tipo == "fin":
+                    estado.write(f"✅ Resultado de `{evento['herramienta']}`:")
+                    estado.json(evento["resultado"], expanded=False)
+                elif tipo == "error":
+                    raise RuntimeError(evento["mensaje"])
+                elif tipo == "final":
+                    answer = evento["answer"]
+                    trace = evento["trace"]
+
+            estado.update(label="✅ Consulta completada", state="complete", expanded=False)
+            st.markdown(answer)
+
+            with st.expander("🔍 Trazabilidad y Criterios Consultados"):
+                if trace:
+                    for i, paso in enumerate(trace, start=1):
+                        st.markdown(f"**{i}. 🔧 Herramienta:** `{paso['herramienta']}`")
+                        st.caption(f"Input: {paso['input']}")
+                        st.json(paso["resultado"], expanded=False)
+                        if i < len(trace):
+                            st.divider()
+                else:
+                    st.info("No se ejecutaron herramientas en este turno.")
+
+            st.session_state.messages.append({"role": "assistant", "content": answer})
+        except Exception as e:
+            estado.update(label="❌ Error en la consulta", state="error")
+            st.error(f"Error de sistema: {str(e)}")
