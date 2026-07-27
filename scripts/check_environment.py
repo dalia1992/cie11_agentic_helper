@@ -1,24 +1,24 @@
-"""Comprobación rápida para antes de la clase."""
+"""Comprobación rápida del entorno antes de levantar el agente CIE-11."""
 from __future__ import annotations
 import os
-import socket
-from pathlib import Path
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
 
 
-def port_open(port: int) -> bool:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.settimeout(.3)
-        return sock.connect_ex(("127.0.0.1", port)) == 0
+def mcp_alcanzable(url: str) -> bool:
+    try:
+        with requests.get(url, timeout=3, stream=True) as response:
+            return response.status_code == 200
+    except requests.RequestException:
+        return False
 
 
-csv_path = Path("data/ecommerce_orders_dataset.csv")
-db_path = Path("data/ecommerce_orders.db")
+mcp_url = os.getenv("AGENT_MCP_URL", "http://127.0.0.1:8000/sse")
+
 print("OPENAI_API_KEY:", "OK" if os.getenv("OPENAI_API_KEY") else "FALTA")
-print("Modelo:", os.getenv("OPENAI_MODEL", "gpt-5.4-nano"))
-print("CSV real:", "OK" if csv_path.exists() else "FALTA")
-print("SQLite importada:", "OK" if db_path.exists() else "FALTA (ejecuta: python data/import_dataset_to_sqlite.py)")
-print("MCP datos 8000:", "ACTIVO" if port_open(8000) else "INACTIVO")
-print("MCP agente 8001:", "ACTIVO" if port_open(8001) else "INACTIVO")
+print("Modelo:", os.getenv("OPENAI_MODEL", "gpt-4o-mini"))
+print("ICD_CLIENT_ID:", "OK" if os.getenv("ICD_CLIENT_ID") else "FALTA")
+print("ICD_CLIENT_SECRET:", "OK" if os.getenv("ICD_CLIENT_SECRET") else "FALTA")
+print(f"Servidor MCP ({mcp_url}):", "ACTIVO" if mcp_alcanzable(mcp_url) else "INACTIVO")
