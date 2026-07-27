@@ -116,7 +116,13 @@ def _ventana_memoria(state: dict) -> dict:
     ventana = int(os.getenv("MEMORY_WINDOW_MESSAGES", 8))
     if len(mensajes) <= ventana + 1:
         return {"llm_input_messages": mensajes}
-    return {"llm_input_messages": [mensajes[0], *mensajes[-ventana:]]}
+    corte = len(mensajes) - ventana
+    # Un ToolMessage sin el AIMessage(tool_calls) que lo originó es inválido para la API:
+    # retrocede el corte hasta el AIMessage que abre el bloque de tool calls.
+    while corte > 0 and mensajes[corte].type == "tool":
+        corte -= 1
+    corte = max(corte, 1)
+    return {"llm_input_messages": [mensajes[0], *mensajes[corte:]]}
 
 async def _stream_agent_events(prompt: str, session_id: str):
     """Ejecuta el agente y va emitiendo eventos ('inicio'/'fin' de tool, 'final') a medida que ocurren."""
