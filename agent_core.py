@@ -3,11 +3,16 @@ Orquestador LangChain, Memoria y Extracción de Traza.
 """
 import os
 import asyncio
+import logging
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.checkpoint.memory import InMemorySaver
+
+# Configuración de logging para diagnóstico
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -35,9 +40,10 @@ async def _invoke_agent(prompt: str, session_id: str) -> dict:
     mcp_client = MultiServerMCPClient(servers_config)
     tools = await mcp_client.get_tools()
     
+    # 2. Inicialización de LLM
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        raise ValueError("No se encontró OPENAI_API_KEY en el entorno. Revisa el archivo .env")
+        raise ValueError("No se encontró OPENAI_API_KEY en el entorno.")
         
     llm = ChatOpenAI(
         api_key=api_key, 
@@ -45,6 +51,7 @@ async def _invoke_agent(prompt: str, session_id: str) -> dict:
         temperature=0
     )
     
+    # 3. Creación y ejecución del agente
     agent = create_react_agent(
         model=llm, 
         tools=tools,
@@ -53,23 +60,31 @@ async def _invoke_agent(prompt: str, session_id: str) -> dict:
     )
     
     config = {"configurable": {"thread_id": session_id}}
-    result = await agent.ainvoke({"messages": [("user", prompt)]}, config=config)
-    return result
+    try:
+        result = await agent.ainvoke({"messages": [("user", prompt)]}, config=config)
+        return result
+    except Exception as e:
+        logger.error(f"❌ Error durante la invocación del agente: {e}")
+        raise e
 
 def run_clinical_agent(prompt: str, session_id: str) -> dict:
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    raw_result = loop.run_until_complete(_invoke_agent(prompt, session_id))
-    
-    messages = raw_result.get("messages", [])
-    answer = messages[-1].content if messages else "Error en la generación."
-    
-    trace = []
-    for m in messages:
-        if m.type == "tool":
-            trace.append({"tool_name": m.name, "result": m.content})
-        elif m.type == "ai" and hasattr(m, 'tool_calls') and m.tool_calls:
-            for tc in m.tool_calls:
-                trace.append({"action": tc.get('name'), "args": tc.get('args')})
-                
-    return {"answer": answer, "trace": trace}
+    """Función síncrona para ser llamada desde Streamlit"""
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        raw_result = loop.run_until_complete(_invoke_agent(prompt, session_id))
+        
+        messages = raw_result.get("messages", [])
+        answer = messages[-1].content if messages else "Error en la generación."
+        
+        trace = []
+        for m in messages:
+            if m.type == "tool":
+                trace.append({"tool_name": m.name, "result": m.content})
+            elif m.type == "ai" and hasattr(m, 'tool_calls') and m.tool_calls:
+                for tc in m.tool_calls:
+                    trace.append({"action": tc.get('name'), "args": tc.get('args')})
+                    
+        return {"answer": answer, "trace": trace}
+    except Exception as e:
+        return {"answer": f"Error del sistema: {str(e)}", "trace": []}

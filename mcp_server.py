@@ -13,7 +13,15 @@ load_dotenv()
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-mcp = FastMCP("GestorDiagnosticoClinicoCIE11")
+# Desde Azure
+mcp = FastMCP(
+    "GestorDiagnosticoClinicoCIE11",
+    host="0.0.0.0",
+    port=int(os.getenv("PORT", 8000)),
+)
+
+# Para local
+# mcp = FastMCP("GestorDiagnosticoClinicoCIE11")
 
 class ICDAuthManager:
     def __init__(self):
